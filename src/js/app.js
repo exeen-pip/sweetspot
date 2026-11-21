@@ -242,6 +242,15 @@ function openSettings() {
       </div>
       <div id="s-edu-status" style="font-size:12px;color:var(--muted);margin-top:4px"></div></label>
 
+    <div class="field">телефон ♡ (Android, та же Wi-Fi)
+      <div class="row">
+        <label style="font-size:13px"><input type="checkbox" id="s-lan-on" ${s.lan && s.lan.enabled !== false ? 'checked' : ''}> включить</label>
+        <button class="btn outline mini" id="s-lan-show">показать ссылку</button>
+      </div>
+      <div id="s-lan-urls" style="font-size:12px;color:var(--accent);margin-top:6px;word-break:break-all"></div>
+      <div style="font-size:11px;color:var(--muted);margin-top:2px">открой ссылку в Chrome на телефоне → меню → «Добавить на главный экран» → будет иконка как у приложения</div>
+    </div>
+
     <label class="field">нейро-парсер (необязательно! бесплатный ключ)
       <div class="row">
         <select id="s-llm-prov" style="width:210px">
@@ -306,6 +315,13 @@ function openSettings() {
       box.querySelector('#s-edu-status').textContent = 'автоматом не вышло — впиши уроки в поле выше, это 2 минуты ♡';
     }
   };
+  box.querySelector('#s-lan-show').onclick = async () => {
+    const info = await window.sp.lanInfo();
+    box.querySelector('#s-lan-urls').innerHTML = info.enabled
+      ? (info.urls.length ? info.urls.map(u => '🔗 ' + esc(u)).join('<br>') : 'Wi-Fi адрес не найден — включи ноут в Wi-Fi и запусти sp')
+      : 'мост выключен — поставь галочку и сохрани';
+  };
+  box.querySelector('#s-lan-on').onchange = () => {};
   box.querySelector('#s-save').onclick = () => {
     const v = id => box.querySelector(id).value;
     const wl = v('#s-whitelist').split(',').map(x => x.trim()).filter(Boolean);
@@ -336,6 +352,7 @@ function openSettings() {
       d.settings.focus.whitelist = wl;
       d.settings.llm.provider = v('#s-llm-prov');
       d.settings.llm.key = v('#s-llm-key').trim();
+      d.settings.lan = Object.assign({}, d.settings.lan || {}, { enabled: box.querySelector('#s-lan-on').checked });
       d.desires = v('#s-desires').split('\n').map(line => {
         const m = line.split('|');
         if (!m[0] || !m[0].trim()) return null;
@@ -349,6 +366,7 @@ function openSettings() {
     applyUi();
     buildDashboard();
     replan(false);
+    window.sp.lanRestart();
     toast('сохранила ♡');
   };
 
@@ -391,6 +409,14 @@ async function boot() {
 
   window.sp.focus.onViolation(() => {
     toast('фокус, ' + (Store.data.profile.name || 'girl') + ' ♡ ты обещала');
+  });
+
+  window.sp.onExternal(() => {
+    Store.load().then(() => {
+      applyUi();
+      buildDashboard();
+      toast('обновилось с телефона/ноута ♡');
+    });
   });
 
   window.sp.notify('sp проснулась ♡', 'sweet spot готов улаживать твой день');

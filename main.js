@@ -4,6 +4,7 @@ const {
 const path = require('path');
 const fs = require('fs');
 const { spawn, execFile } = require('child_process');
+const lan = require('./lan');
 
 let win = null;
 let focusProc = null;
@@ -67,7 +68,41 @@ function createWindow() {
   win.on('closed', () => { win = null; });
 }
 
-app.whenReady().then(createWindow);
+app.whenReady().then(() => { createWindow(); startLan(); });
+
+/* ---------------- LAN-мост для телефона ---------------- */
+async function startLan() {
+  const s = readStore();
+  s.lan = s.lan || {};
+  if (s.lan.enabled === undefined) s.lan.enabled = true;
+  if (!s.lan.key) s.lan.key = lan.makeKey();
+  if (!s.lan.port) s.lan.port = 4200;
+  writeStoreLater(s);
+  if (!s.lan.enabled) return { enabled: false, port: s.lan.port, key: s.lan.key, urls: [] };
+  const info = lan.start({
+    dataFile: dataFile(),
+    port: s.lan.port,
+    mobileDir: path.join(__dirname, 'mobile'),
+    key: s.lan.key,
+    externalChange: () => { if (win) win.webContents.send('store:external'); }
+  });
+  if (!info || !info.urls.length) {
+    console.warn('lan: Wi-Fi адрес не найден, сервер ждёт на порту', s.lan.port);
+  }
+  return info;
+}
+
+ipcMain.handle('lan:info', () => {
+  const s = readStore();
+  s.lan = s.lan || {};
+  return {
+    enabled: s.lan.enabled !== false,
+    port: s.lan.port || 4200,
+    key: s.lan.key || '',
+    urls: s.lan.enabled === false ? [] : lan.url(s.lan.key || 'ключ появится после запуска', s.lan.port || 4200)
+  };
+});
+ipcMain.handle('lan:restart', async () => { return startLan(); });
 app.on('window-all-closed', () => app.quit());
 
 /* ---------------- generic fetch through main (no CORS) ---------------- */
