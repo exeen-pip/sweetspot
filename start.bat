@@ -1,34 +1,31 @@
 @echo off
-chcp 65001 >nul
 cd /d "%~dp0"
 
 where node >nul 2>nul
 if errorlevel 1 (
   echo.
-  echo ============================================================
-  echo   Node.js не найден на этом ноуте :^(
-  echo   1) скачай LTS отсюда: https://nodejs.org
-  echo   2) установи (галочка "Add to PATH" стоит сама)
-  echo   3) снова запусти start.bat
-  echo ============================================================
+  echo  Node.js not found!
+  echo  1. Download LTS from https://nodejs.org
+  echo  2. Install it, then run start.bat again
   echo.
   pause
   exit /b 1
 )
 
 if not exist node_modules (
-  echo Первый запуск: ставлю движок, это 2-3 минуты... я подожду, не закрывай окошко ♡
+  echo First run: installing engine, 2-3 minutes... do not close this window.
   call npm install
   if errorlevel 1 (
-    echo npm install не сработал — пришли мне скриншот этого окна.
+    echo.
+    echo npm install failed - screenshot this window and send it to me.
     pause
     exit /b 1
   )
 )
 
-echo Запускаю sp ♡
+echo Starting sp...
 call npm start
 
 echo.
-echo Если окно sp не открылось — сделай скриншот этого окна и пришли мне ♡
+echo If the sp window did not open - screenshot this window and send it.
 pause
