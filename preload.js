@@ -3,7 +3,8 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('sp', {
   store: {
     get: () => ipcRenderer.invoke('store:get'),
-    put: (data) => ipcRenderer.invoke('store:put', data)
+    put: (data) => ipcRenderer.invoke('store:put', data),
+    onExternal: (cb) => ipcRenderer.on('store:external', () => cb())
   },
   http: (url, options) => ipcRenderer.invoke('http:fetch', { url, options }),
   notify: (title, body) => ipcRenderer.invoke('app:notify', { title, body }),
@@ -18,6 +19,12 @@ contextBridge.exposeInMainWorld('sp', {
     state: () => ipcRenderer.invoke('focus:state'),
     onViolation: (cb) => ipcRenderer.on('focus:violation', (e, data) => cb(data))
   },
+  walls: {
+    search: (q) => ipcRenderer.invoke('walls:search', { q }),
+    save: (item) => ipcRenderer.invoke('walls:save', { item })
+  },
+  lanInfo: () => ipcRenderer.invoke('lan:info'),
+  lanRestart: () => ipcRenderer.invoke('lan:restart'),
   ytdlp: {
     check: () => ipcRenderer.invoke('ytdlp:check'),
     download: (url, outDir) => ipcRenderer.invoke('ytdlp:download', { url, outDir })

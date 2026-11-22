@@ -18,9 +18,22 @@
   "build": {
     "appId": "kz.sweetspot.app",
     "productName": "sp",
-    "directories": { "output": "dist" },
-    "files": ["main.js", "preload.js", "src/**/*"],
-    "win": { "target": "nsis" },
-    "nsis": { "oneClick": false, "allowToChangeInstallationDirectory": true }
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "lan.js",
+      "src/**/*",
+      "mobile/**/*"
+    ],
+    "win": {
+      "target": "nsis"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
   }
 }

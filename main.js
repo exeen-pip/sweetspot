@@ -4,6 +4,7 @@ const {
 const path = require('path');
 const fs = require('fs');
 const { spawn, execFile } = require('child_process');
+const lan = require('./lan');
 
 let win = null;
 let focusProc = null;
@@ -67,7 +68,41 @@ function createWindow() {
   win.on('closed', () => { win = null; });
 }
 
-app.whenReady().then(createWindow);
+app.whenReady().then(() => { createWindow(); startLan(); });
+
+/* ---------------- LAN-мост для телефона ---------------- */
+async function startLan() {
+  const s = readStore();
+  s.lan = s.lan || {};
+  if (s.lan.enabled === undefined) s.lan.enabled = true;
+  if (!s.lan.key) s.lan.key = lan.makeKey();
+  if (!s.lan.port) s.lan.port = 4200;
+  writeStoreLater(s);
+  if (!s.lan.enabled) return { enabled: false, port: s.lan.port, key: s.lan.key, urls: [] };
+  const info = lan.start({
+    dataFile: dataFile(),
+    port: s.lan.port,
+    mobileDir: path.join(__dirname, 'mobile'),
+    key: s.lan.key,
+    externalChange: () => { if (win) win.webContents.send('store:external'); }
+  });
+  if (!info || !info.urls.length) {
+    console.warn('lan: Wi-Fi адрес не найден, сервер ждёт на порту', s.lan.port);
+  }
+  return info;
+}
+
+ipcMain.handle('lan:info', () => {
+  const s = readStore();
+  s.lan = s.lan || {};
+  return {
+    enabled: s.lan.enabled !== false,
+    port: s.lan.port || 4200,
+    key: s.lan.key || '',
+    urls: s.lan.enabled === false ? [] : lan.url(s.lan.key || 'ключ появится после запуска', s.lan.port || 4200)
+  };
+});
+ipcMain.handle('lan:restart', async () => { return startLan(); });
 app.on('window-all-closed', () => app.quit());
 
 /* ---------------- generic fetch through main (no CORS) ---------------- */
@@ -132,6 +167,66 @@ ipcMain.handle('app:notify', (e, { title, body, silent }) => {
 });
 ipcMain.handle('app:open-external', (e, url) => { shell.openExternal(url); return true; });
 ipcMain.handle('app:open-path', (e, p) => { shell.openPath(p); return true; });
+/* ---------------- walls: Pinterest-vibe backgrounds (Unsplash, free) ---------------- */
+async function wallsSearchUnsplash(q) {
+  const url = 'https://unsplash.com/napi/search/photos?per_page=24&query=' + encodeURIComponent(q);
+  const res = await netFetch(url, { headers: { 'User-Agent': 'Mozilla/5.0 sp-sweet-spot' } });
+  if (!res.ok) throw new Error('unsplash ' + res.status);
+  const json = JSON.parse(await res.text());
+  return (json.results || []).map(r => ({
+    id: 'u_' + r.id,
+    thumb: r.urls ? (r.urls.small || r.urls.regular) : null,
+    full: r.urls ? r.urls.regular : null,
+    author: r.user && r.user.name,
+    link: r.links && r.links.html
+  })).filter(r => r.thumb && r.full);
+}
+
+async function wallsSearchOpenverse(q) {
+  const url = 'https://api.openverse.org/v1/images/?page_size=24&q=' + encodeURIComponent(q);
+  const res = await netFetch(url, { headers: { 'User-Agent': 'sp-sweet-spot/0.1' } });
+  if (!res.ok) throw new Error('openverse ' + res.status);
+  const json = JSON.parse(await res.text());
+  return (json.results || []).map(r => ({
+    id: 'ov_' + (r.id || Math.random().toString(36).slice(2)),
+    thumb: r.thumbnail || r.url,
+    full: r.url,
+    author: r.creator,
+    link: r.foreign_landing_url || null
+  })).filter(r => r.thumb && r.full);
+}
+
+ipcMain.handle('walls:search', async (e, { q }) => {
+  const qq = q || 'aesthetic';
+  try {
+    const a = await wallsSearchUnsplash(qq);
+    if (a.length) return a;
+  } catch (err1) {
+    try {
+      const b = await wallsSearchOpenverse(qq);
+      if (b.length) return b;
+      return { error: 'ничего не нашлось, попробуй другое слово ♡' };
+    } catch (err2) {
+      return { error: 'сеть не отвечает: ' + String(err1 && err1.message || err1).slice(0, 80) + ' / ' + String(err2 && err2.message || err2).slice(0, 80) };
+    }
+  }
+  return { error: 'ничего не нашлось, попробуй другое слово ♡' };
+});
+
+ipcMain.handle('walls:save', async (e, { item }) => {
+  try {
+    const res = await netFetch(item.full || item.thumb);
+    const buf = Buffer.from(await res.arrayBuffer());
+    const dir = path.join(dataDir(), 'wallpapers');
+    fs.mkdirSync(dir, { recursive: true });
+    const file = path.join(dir, (item.id || 'wall') + '_' + Date.now() + '.jpg');
+    fs.writeFileSync(file, buf);
+    return { ok: true, file };
+  } catch (err) {
+    return { ok: false, error: String(err && err.message || err) };
+  }
+});
+
 ipcMain.handle('app:set-bg', (e, file) => {
   const s = readStore();
   s.ui = s.ui || {};

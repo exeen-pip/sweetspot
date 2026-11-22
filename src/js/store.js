@@ -36,7 +36,8 @@ const DEFAULTS = {
     edupage: { schoolUrl: '', classId: '7A', lastTimetable: null },
     llm: { provider: 'gemini', key: '' },
     focus: { whitelist: ['word', 'excel', 'powerpoint', 'anki', 'ankiweb', 'notion', 'vscode', 'quizlet'] },
-    musicFolder: null
+    musicFolder: null,
+    lan: { enabled: true, port: 4200, key: null }
   },
   tasks: [],
   inbox: [],

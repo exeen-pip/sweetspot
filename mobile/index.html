@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#e56995">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icon-192.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <title>sp — sweet spot</title>
+  <link rel="stylesheet" href="sp.css">
+</head>
+<body>
+  <header>
+    <div class="brand">sp <span>sweet spot ♡</span></div>
+    <div id="clock"></div>
+  </header>
+
+  <main>
+    <section class="greet-box"><div id="greet"></div></section>
+
+    <section>
+      <h2>план на сегодня</h2>
+      <div id="plan" class="card"></div>
+    </section>
+
+    <section>
+      <h2>anki</h2>
+      <div id="anki" class="card small"></div>
+    </section>
+
+    <section>
+      <h2>задачи</h2>
+      <div class="card">
+        <div class="add-row">
+          <input id="new-task" placeholder="что сделать? ♡">
+          <button id="btn-add">+</button>
+        </div>
+        <div id="tasks"></div>
+      </div>
+    </section>
+
+    <section>
+      <h2>заметки с ноута</h2>
+      <div id="notes" class="card small"></div>
+    </section>
+
+    <footer>всё живёт на твоём ноуте · обновится само</footer>
+  </main>
+
+  <script src="sp.js"></script>
+</body>
+</html>

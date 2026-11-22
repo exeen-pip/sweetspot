@@ -1,0 +1,10 @@
+{
+  "name": "sp — sweet spot",
+  "short_name": "sp",
+  "description": "план, задачи и заметки из сп на телефоне",
+  "start_url": "index.html",
+  "display": "standalone",
+  "background_color": "#fdf0f4",
+  "theme_color": "#e56995",
+  "icons": [{ "src": "icon-192.png", "sizes": "192x192", "type": "image/png" }]
+}
