@@ -15,6 +15,8 @@ if errorlevel 1 (
 if not exist node_modules (
   echo First run: installing engine, 2-3 minutes... do not close this window.
   call npm install > install-log.txt 2>&1
+  rem new npm blocks postinstall scripts by default
+  call npm install-scripts approve electron >> install-log.txt 2>&1
 )
 
 rem --- auto-heal: electron binary sometimes does not download ---
