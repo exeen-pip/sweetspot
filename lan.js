@@ -10,6 +10,7 @@ const os = require('os');
 
 let server = null;
 let currentKey = null;
+let currentPort = null;
 let onExternalChange = null; /* колбек в main: телефон что-то поменял */
 
 const MIME = {
@@ -36,7 +37,8 @@ function makeKey() {
 }
 
 function url(key, port) {
-  return lanIps().map(ip => 'http://' + ip + ':' + port + '/?k=' + key);
+  const p = currentPort || port;
+  return lanIps().map(ip => 'http://' + ip + ':' + p + '/?k=' + key);
 }
 
 function readStoreFile(dataFile) {
@@ -183,8 +185,20 @@ function start(opts) {
     res.end(fs.readFileSync(abs));
   });
 
-  server.listen(port, '0.0.0.0');
-  return { port, key: currentKey, urls: url(currentKey, port) };
+  /* порт занят? пробуем следующий, приложение не должно падать из-за Wi-Fi */
+  let tryPort = port;
+  server.on('error', (err) => {
+    if (err && err.code === 'EADDRINUSE' && tryPort < port + 20) {
+      tryPort += 1;
+      console.warn('lan: порт ' + (tryPort - 1) + ' занят, пробую ' + tryPort);
+      server.listen(tryPort, '0.0.0.0');
+    } else if (err) {
+      console.warn('lan-мост выключился тихо:', err.message); /* sp живёт без телефона */
+    }
+  });
+  server.listen(tryPort, '0.0.0.0');
+  currentPort = tryPort;
+  return { port: tryPort, key: currentKey, urls: url(currentKey, tryPort) };
 }
 
 function stop() {
