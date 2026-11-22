@@ -11,9 +11,9 @@ if not exist sp.zip.part01 goto miss
 for %%F in (sp.zip.part00) do set S0=%%~zF
 for %%F in (sp.zip.part01) do set S1=%%~zF
 echo part00 size: !S0!  (need 62914560)
-echo part01 size: !S1!  (need 52206546)
+echo part01 size: !S1!  (need 52206760)
 if not "!S0!"=="62914560" goto badsize
-if not "!S1!"=="52206546" goto badsize
+if not "!S1!"=="52206760" goto badsize
 
 rem close sp if it is still running (it locks the folder)
 taskkill /f /im sp.exe >nul 2>nul

@@ -94,7 +94,7 @@ function warmupLoop() {
   }, 20000);
 }
 
-/* ---------- дашборд ---------- */
+/* ---------- дашборд: окна как на ноутбуке ---------- */
 const WIDGET_META = {
   clock:      { icon: '🕰️', desc: 'время, дата и мягкое приветствие дня' },
   planner:    { icon: '🗓️', desc: 'автоплан: учёба, желания и разминки по энергии' },
@@ -107,31 +107,16 @@ const WIDGET_META = {
   focus:      { icon: '🛡️', desc: 'фокус-страж: не даст уйти в думскроллинг' }
 };
 const WIDGET_COLORS = ['#e56995', '#e88a5d', '#b57fd6', '#7fa8e0', '#77c79a', '#e6c05a', '#e8837f', '#9c8b7a'];
-const ROW_H = 40, GAP = 14, MINCOL = 300;
+const WIN_MIN_W = 250, WIN_MIN_H = 130;
+let winZ = 100;
 
-function dashboardCols() {
-  const dash = document.getElementById('dashboard');
-  return +(dash.dataset.cols || 0) || 3;
-}
+function bringFront(w) { w.style.zIndex = ++winZ; }
 
-function applyGridCols() {
-  const dash = document.getElementById('dashboard');
-  const W = dash.clientWidth - 36;
-  const cols = Math.max(1, Math.floor((W + GAP) / (MINCOL + GAP)));
-  dash.style.setProperty('--sp-cols', cols);
-  dash.dataset.cols = cols;
-  dash.querySelectorAll('.widget').forEach(w => {
-    const cfg = Store.data.ui.widgets[w.dataset.widget];
-    if (!cfg) return;
-    const sp = widgetSpans(cfg);
-    w.style.gridColumn = 'span ' + Math.max(1, Math.min(sp.w, cols));
-  });
-}
-
-function widgetSpans(cfg) {
-  if (cfg.spans && cfg.spans.h) return cfg.spans;
-  const h = cfg.size === 's' ? 5 : cfg.size === 'l' ? 14 : 8;
-  return { h, w: 1 };
+function placeWin(w, cfg, collapsed) {
+  w.style.left = cfg.x + 'px';
+  w.style.top = cfg.y + 'px';
+  w.style.width = cfg.w + 'px';
+  w.style.height = (collapsed ? 52 : cfg.h) + 'px';
 }
 
 function hideWidget(name) {
@@ -141,7 +126,11 @@ function hideWidget(name) {
 }
 
 function toggleCollapse(name) {
-  Store.patch(d => { d.ui.widgets[name] = { ...d.ui.widgets[name], collapsed: !d.ui.widgets[name].collapsed }; });
+  Store.patch(d => {
+    const c = d.ui.widgets[name];
+    if (!c.collapsed) { c.restoreH = c.h; c.collapsed = true; }
+    else { c.collapsed = false; if (c.restoreH) c.h = c.restoreH; }
+  });
   buildDashboard();
 }
 
@@ -154,8 +143,7 @@ function widgetMenu(x, y, name) {
 
   m.innerHTML = '<div class="ctx-label">цвет этой карточки ♡</div>';
   const row = el('div', 'ctx-colors');
-  const dots = WIDGET_COLORS.slice();
-  for (const color of dots) {
+  for (const color of WIDGET_COLORS) {
     const d = el('span', 'ctx-dot');
     d.style.background = color;
     if (cfg.color === color) d.classList.add('active');
@@ -181,8 +169,8 @@ function widgetMenu(x, y, name) {
     m.appendChild(it);
   };
   item(cfg.collapsed ? 'развернуть' : 'свернуть', () => toggleCollapse(name));
-  item('сбросить размер', () => {
-    Store.patch(d => { d.ui.widgets[name] = { ...d.ui.widgets[name], spans: null, size: 'm' }; });
+  item('сбросить размер и место', () => {
+    Store.patch(d => { d.ui.widgets[name] = { ...d.ui.widgets[name], x: null, y: null, w: 360, h: 300 }; });
     buildDashboard();
   });
   item('в архив', () => hideWidget(name));
@@ -194,42 +182,75 @@ function widgetMenu(x, y, name) {
   setTimeout(() => document.addEventListener('pointerdown', closeCtx, { once: true }), 0);
 }
 
-function enableResize(w, name, grip) {
-  grip.addEventListener('pointerdown', (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    grip.setPointerCapture(e.pointerId);
-    const s0 = widgetSpans(Store.data.ui.widgets[name]);
-    const cols = dashboardCols();
-    const dash = document.getElementById('dashboard');
-    const colW = (dash.clientWidth - 36 - (cols - 1) * GAP) / cols;
-    const x0 = e.clientX, y0 = e.clientY;
-    const h0 = s0.h, w0 = Math.min(s0.w || 1, cols);
-    w.classList.add('resizing');
+function enableWinDrag(win, name, head) {
+  head.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0 || e.target.closest('.widget-ctl')) return;
+    bringFront(win);
+    const sx = e.clientX, sy = e.clientY;
+    const cfg = Store.data.ui.widgets[name];
+    const ox = cfg.x, oy = cfg.y;
+    let px = ox, py = oy, moving = false;
 
     const move = (ev) => {
-      const h = Math.max(3, h0 + Math.round((ev.clientY - y0) / (ROW_H + GAP)));
-      const wd = Math.max(1, Math.min(w0 + Math.round((ev.clientX - x0) / (colW + GAP)), cols));
-      w.style.gridRow = 'span ' + h;
-      w.style.gridColumn = 'span ' + wd;
-      w.dataset.spanH = h; w.dataset.spanW = wd;
+      const dx = ev.clientX - sx, dy = ev.clientY - sy;
+      if (!moving && Math.abs(dx) + Math.abs(dy) < 4) return;
+      moving = true;
+      const dash = document.getElementById('dashboard');
+      px = Math.max(-cfg.w + 150, Math.min(ox + dx, dash.clientWidth - 80));
+      py = Math.max(0, Math.min(oy + dy, dash.clientHeight - 56));
+      win.style.left = px + 'px';
+      win.style.top = py + 'px';
     };
     const up = () => {
-      grip.removeEventListener('pointermove', move);
-      grip.removeEventListener('pointerup', up);
-      w.classList.remove('resizing');
-      const h = +(w.dataset.spanH || h0), wd = +(w.dataset.spanW || w0);
-      Store.patch(d => {
-        d.ui.widgets[name] = {
-          ...d.ui.widgets[name],
-          spans: { h, w: wd },
-          size: h <= 5 ? 's' : h >= 14 ? 'l' : 'm'
-        };
-      });
-      delete w.dataset.spanH; delete w.dataset.spanW;
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      if (moving) Store.patch(d => { Object.assign(d.ui.widgets[name], { x: px, y: py }); });
     };
-    grip.addEventListener('pointermove', move);
-    grip.addEventListener('pointerup', up);
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  });
+}
+
+function enableWinResize(win, name, grip) {
+  grip.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    bringFront(win);
+    const cfg = Store.data.ui.widgets[name];
+    const sx = e.clientX, sy = e.clientY;
+    const w0 = cfg.w || 360, h0 = cfg.h || 300;
+    let pw = w0, ph = h0;
+    win.classList.add('resizing');
+
+    const move = (ev) => {
+      pw = Math.max(WIN_MIN_W, w0 + (ev.clientX - sx));
+      ph = Math.max(WIN_MIN_H, h0 + (ev.clientY - sy));
+      win.style.width = pw + 'px';
+      win.style.height = ph + 'px';
+    };
+    const up = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      win.classList.remove('resizing');
+      Store.patch(d => { Object.assign(d.ui.widgets[name], { w: pw, h: ph }); });
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  });
+}
+
+function clampWins() {
+  const dash = document.getElementById('dashboard');
+  document.querySelectorAll('.widget').forEach(w => {
+    const cfg = Store.data.ui.widgets[w.dataset.widget];
+    if (!cfg || cfg.collapsed) return;
+    if (cfg.x + 80 > dash.clientWidth || cfg.y + 56 > dash.clientHeight) {
+      cfg.x = Math.max(18, Math.min(cfg.x, dash.clientWidth - 320));
+      cfg.y = Math.max(0, Math.min(cfg.y, dash.clientHeight - 200));
+      placeWin(w, cfg);
+      Store.patch(d => { Object.assign(d.ui.widgets[w.dataset.widget], { x: cfg.x, y: cfg.y }); });
+    }
   });
 }
 
@@ -237,23 +258,38 @@ function buildDashboard() {
   const dash = document.getElementById('dashboard');
   dash.innerHTML = '';
   const defs = Store.data.ui.widgets;
-  const names = Object.keys(defs).filter(n => defs[n].on !== false).sort((a, b) => defs[a].order - defs[b].order);
+  const names = Object.keys(defs).filter(n => defs[n].on !== false).sort((a, b) => (defs[a].order || 0) - (defs[b].order || 0));
 
-  for (const name of names) {
+  const W = Math.max(320, dash.clientWidth - 36);
+  const H = Math.max(300, dash.clientHeight - 24);
+  const lanes = Math.max(1, Math.min(4, Math.floor(W / 350)));
+  const laneW = W / lanes;
+  const laneY = new Array(lanes).fill(14);
+  winZ = 100;
+
+  names.forEach((name, idx) => {
     const def = Widgets[name];
-    if (!def) continue;
+    if (!def) return;
     const cfg = defs[name];
-    const spans = widgetSpans(cfg);
-    const collapsed = !!cfg.collapsed;
 
+    if (cfg.x == null) {
+      const lane = idx % lanes;
+      cfg.w = Math.max(WIN_MIN_W, Math.round(laneW) - 30);
+      cfg.h = cfg.size === 's' ? 200 : cfg.size === 'l' ? 430 : 300;
+      cfg.x = Math.round(18 + lane * laneW + 12);
+      cfg.y = Math.min(laneY[lane], Math.max(14, H - 210));
+      laneY[lane] += cfg.h + 18;
+      Store.patch(d => { Object.assign(d.ui.widgets[name], { x: cfg.x, y: cfg.y, w: cfg.w, h: cfg.h }); });
+    }
+
+    const collapsed = !!cfg.collapsed;
     const w = el('div', 'widget' + (collapsed ? ' collapsed' : ''));
     w.dataset.widget = name;
-    w.style.gridRow = 'span ' + (collapsed ? 2 : spans.h);
-    w.style.gridColumn = 'span ' + Math.max(1, Math.min(spans.w || 1, dashboardCols()));
+    placeWin(w, cfg, collapsed);
+    w.style.zIndex = ++winZ;
     if (cfg.color) w.style.setProperty('--card-accent', cfg.color);
 
     const head = el('div', 'widget-head');
-    head.setAttribute('draggable', 'true');
     head.innerHTML = '<span class="widget-title">' + esc(def.title) + '</span>';
     const ctl = el('div', 'widget-ctl');
     const mkBtn = (txt, title, fn) => {
@@ -283,14 +319,13 @@ function buildDashboard() {
     }
 
     const grip = el('div', 'resize-grip');
-    grip.title = 'тяни — размер какой хочешь';
-    enableResize(w, name, grip);
+    grip.title = 'тяни в любую сторону';
+    enableWinResize(w, name, grip);
     w.appendChild(grip);
 
+    enableWinDrag(w, name, head);
     dash.appendChild(w);
-  }
-  enableDrag();
-  applyGridCols();
+  });
 }
 
 /* ---------- полка «+» ---------- */
@@ -325,7 +360,7 @@ function openShelf() {
         b.onclick = () => {
           Store.patch(d => {
             if (!d.ui.widgets[name]) d.ui.widgets[name] = { on: true, size: 'm', order: Object.keys(d.ui.widgets).length };
-            else d.ui.widgets[name] = { ...d.ui.widgets[name], on: true };
+            else d.ui.widgets[name] = { ...d.ui.widgets[name], on: true, x: null, y: null };
           });
           buildDashboard();
           openShelf();
@@ -567,7 +602,7 @@ async function boot() {
   document.getElementById('btn-settings').onclick = openSettings;
   document.getElementById('btn-shelf').onclick = openShelf;
   document.getElementById('btn-walls').onclick = Walls.open;
-  window.addEventListener('resize', applyGridCols);
+  window.addEventListener('resize', clampWins);
 
   const topClock = document.getElementById('topbar-clock');
   const tickTop = () => {
