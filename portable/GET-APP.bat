@@ -1,26 +1,60 @@
 @echo off
-setlocal
+setlocal EnableDelayedExpansion
 cd /d "%~dp0"
+echo --------------------------------------------
+echo  sp portable setup - do not close this window
+echo --------------------------------------------
 
-if not exist sp-portable-win-x64.zip.part00 goto err
-if not exist sp-portable-win-x64.zip.part01 goto err
+if not exist sp-portable-win-x64.zip.part00 goto miss
+if not exist sp-portable-win-x64.zip.part01 goto miss
 
-echo Assembling the archive...
+for %%F in (sp-portable-win-x64.zip.part00) do set S0=%%~zF
+for %%F in (sp-portable-win-x64.zip.part01) do set S1=%%~zF
+echo part00 size: !S0!  (need 62914560)
+echo part01 size: !S1!  (need 52206546)
+if not "!S0!"=="62914560" goto badsize
+if not "!S1!"=="52206546" goto badsize
+
+rem close sp if it is still running (it locks the folder)
+taskkill /f /im sp.exe >nul 2>nul
+timeout /t 1 >nul
+
+echo gluing parts together...
 copy /b /y sp-portable-win-x64.zip.part00+sp-portable-win-x64.zip.part01 sp-portable-win-x64.zip >nul
 if errorlevel 1 goto err
 
-echo Unpacking, 30-60 seconds...
-powershell -NoProfile -ExecutionPolicy Bypass -Command "Expand-Archive -Force -LiteralPath 'sp-portable-win-x64.zip' -DestinationPath 'sp-app'"
-if errorlevel 1 goto err
+echo unpacking (30-60 sec)...
+if exist sp-app rmdir /s /q sp-app
+mkdir sp-app 2>nul
+powershell -NoProfile -ExecutionPolicy Bypass -Command "try { Expand-Archive -Force -LiteralPath 'sp-portable-win-x64.zip' -DestinationPath 'sp-app'; exit 0 } catch { Write-Host $_.Exception.Message; exit 1 }"
+if errorlevel 1 (
+  echo trying second method (tar)...
+  tar -xf sp-portable-win-x64.zip -C sp-app
+  if errorlevel 1 goto err
+)
+if not exist sp-app\sp.exe goto err
 
-echo Done. Starting sp...
+echo done! starting sp...
+del /q sp-portable-win-x64.zip.part00 sp-portable-win-x64.zip.part01 sp-portable-win-x64.zip >nul 2>nul
 start "" "sp-app\sp.exe"
-
-del /q sp-portable-win-x64.zip.part00 sp-portable-win-x64.zip.part01 sp-portable-win-x64.zip
-echo ...and part files cleaned up. From now on just run sp-app\sp.exe
 exit /b 0
 
+:miss
+echo I do not see both part files in this folder.
+echo Files in this folder:
+dir /b
+echo Download part00 and part01 from:
+echo https://github.com/exeen-pip/sweetspot/tree/vibe/sp-mvp-24f517/portable
+goto end
+
+:badsize
+echo A part is not fully downloaded - browser cut it off.
+echo Delete BOTH part files and download them again.
+goto end
+
 :err
-echo Something went wrong - send me a screenshot of this window.
+echo Something went wrong. Send me a screenshot of this whole window.
+:end
+echo.
 pause
 exit /b 1
