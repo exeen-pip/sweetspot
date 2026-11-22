@@ -31,13 +31,16 @@ if exist node_modules\electron\index.js if not exist node_modules\electron\dist\
   if not exist node_modules\electron\dist\electron.exe (
     echo.
     echo Could not heal Electron - send me the file install-log.txt
+    echo Alternative: download the portable build from Releases - no npm needed:
+    echo https://github.com/exeen-pip/sweetspot/releases
     pause
     exit /b 1
   )
 )
 
 echo Starting sp... (console is quiet on purpose, app window opens separately)
-call npm start > sp-log.txt 2>&1
+rem run electron directly: no npm, no install-scripts policies
+"node_modules\electron\dist\electron.exe" . > sp-log.txt 2>&1
 
 echo.
 echo sp closed. If that was not you - open sp-log.txt and send me a screenshot.
