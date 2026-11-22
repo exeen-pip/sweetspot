@@ -167,6 +167,66 @@ ipcMain.handle('app:notify', (e, { title, body, silent }) => {
 });
 ipcMain.handle('app:open-external', (e, url) => { shell.openExternal(url); return true; });
 ipcMain.handle('app:open-path', (e, p) => { shell.openPath(p); return true; });
+/* ---------------- walls: Pinterest-vibe backgrounds (Unsplash, free) ---------------- */
+async function wallsSearchUnsplash(q) {
+  const url = 'https://unsplash.com/napi/search/photos?per_page=24&query=' + encodeURIComponent(q);
+  const res = await netFetch(url, { headers: { 'User-Agent': 'Mozilla/5.0 sp-sweet-spot' } });
+  if (!res.ok) throw new Error('unsplash ' + res.status);
+  const json = JSON.parse(await res.text());
+  return (json.results || []).map(r => ({
+    id: 'u_' + r.id,
+    thumb: r.urls ? (r.urls.small || r.urls.regular) : null,
+    full: r.urls ? r.urls.regular : null,
+    author: r.user && r.user.name,
+    link: r.links && r.links.html
+  })).filter(r => r.thumb && r.full);
+}
+
+async function wallsSearchOpenverse(q) {
+  const url = 'https://api.openverse.org/v1/images/?page_size=24&q=' + encodeURIComponent(q);
+  const res = await netFetch(url, { headers: { 'User-Agent': 'sp-sweet-spot/0.1' } });
+  if (!res.ok) throw new Error('openverse ' + res.status);
+  const json = JSON.parse(await res.text());
+  return (json.results || []).map(r => ({
+    id: 'ov_' + (r.id || Math.random().toString(36).slice(2)),
+    thumb: r.thumbnail || r.url,
+    full: r.url,
+    author: r.creator,
+    link: r.foreign_landing_url || null
+  })).filter(r => r.thumb && r.full);
+}
+
+ipcMain.handle('walls:search', async (e, { q }) => {
+  const qq = q || 'aesthetic';
+  try {
+    const a = await wallsSearchUnsplash(qq);
+    if (a.length) return a;
+  } catch (err1) {
+    try {
+      const b = await wallsSearchOpenverse(qq);
+      if (b.length) return b;
+      return { error: 'ничего не нашлось, попробуй другое слово ♡' };
+    } catch (err2) {
+      return { error: 'сеть не отвечает: ' + String(err1 && err1.message || err1).slice(0, 80) + ' / ' + String(err2 && err2.message || err2).slice(0, 80) };
+    }
+  }
+  return { error: 'ничего не нашлось, попробуй другое слово ♡' };
+});
+
+ipcMain.handle('walls:save', async (e, { item }) => {
+  try {
+    const res = await netFetch(item.full || item.thumb);
+    const buf = Buffer.from(await res.arrayBuffer());
+    const dir = path.join(dataDir(), 'wallpapers');
+    fs.mkdirSync(dir, { recursive: true });
+    const file = path.join(dir, (item.id || 'wall') + '_' + Date.now() + '.jpg');
+    fs.writeFileSync(file, buf);
+    return { ok: true, file };
+  } catch (err) {
+    return { ok: false, error: String(err && err.message || err) };
+  }
+});
+
 ipcMain.handle('app:set-bg', (e, file) => {
   const s = readStore();
   s.ui = s.ui || {};

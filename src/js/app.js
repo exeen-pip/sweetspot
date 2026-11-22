@@ -95,6 +95,144 @@ function warmupLoop() {
 }
 
 /* ---------- дашборд ---------- */
+const WIDGET_META = {
+  clock:      { icon: '🕰️', desc: 'время, дата и мягкое приветствие дня' },
+  planner:    { icon: '🗓️', desc: 'автоплан: учёба, желания и разминки по энергии' },
+  inbox:      { icon: '📥', desc: 'быстро кинуть мысль — разложить позже' },
+  tasks:      { icon: '📌', desc: 'дела с дедлайнами и приоритетами' },
+  notes:      { icon: '💌', desc: 'заметки-стикеры' },
+  player:     { icon: '🎧', desc: 'музыка из папки или плейлиста' },
+  calculator: { icon: '🧮', desc: 'калькулятор под рукой' },
+  anki:       { icon: '🃏', desc: 'карточки анки: обзор и повторения' },
+  focus:      { icon: '🛡️', desc: 'фокус-страж: не даст уйти в думскроллинг' }
+};
+const WIDGET_COLORS = ['#e56995', '#e88a5d', '#b57fd6', '#7fa8e0', '#77c79a', '#e6c05a', '#e8837f', '#9c8b7a'];
+const ROW_H = 40, GAP = 14, MINCOL = 300;
+
+function dashboardCols() {
+  const dash = document.getElementById('dashboard');
+  return +(dash.dataset.cols || 0) || 3;
+}
+
+function applyGridCols() {
+  const dash = document.getElementById('dashboard');
+  const W = dash.clientWidth - 36;
+  const cols = Math.max(1, Math.floor((W + GAP) / (MINCOL + GAP)));
+  dash.style.setProperty('--sp-cols', cols);
+  dash.dataset.cols = cols;
+  dash.querySelectorAll('.widget').forEach(w => {
+    const cfg = Store.data.ui.widgets[w.dataset.widget];
+    if (!cfg) return;
+    const sp = widgetSpans(cfg);
+    w.style.gridColumn = 'span ' + Math.max(1, Math.min(sp.w, cols));
+  });
+}
+
+function widgetSpans(cfg) {
+  if (cfg.spans && cfg.spans.h) return cfg.spans;
+  const h = cfg.size === 's' ? 5 : cfg.size === 'l' ? 14 : 8;
+  return { h, w: 1 };
+}
+
+function hideWidget(name) {
+  Store.patch(d => { d.ui.widgets[name] = { ...d.ui.widgets[name], on: false }; });
+  buildDashboard();
+  toast('в архиве — вернуть на полке «+» ♡');
+}
+
+function toggleCollapse(name) {
+  Store.patch(d => { d.ui.widgets[name] = { ...d.ui.widgets[name], collapsed: !d.ui.widgets[name].collapsed }; });
+  buildDashboard();
+}
+
+function closeCtx() { document.querySelectorAll('.ctx-menu').forEach(x => x.remove()); }
+
+function widgetMenu(x, y, name) {
+  closeCtx();
+  const m = el('div', 'ctx-menu');
+  const cfg = Store.data.ui.widgets[name];
+
+  m.innerHTML = '<div class="ctx-label">цвет этой карточки ♡</div>';
+  const row = el('div', 'ctx-colors');
+  const dots = WIDGET_COLORS.slice();
+  for (const color of dots) {
+    const d = el('span', 'ctx-dot');
+    d.style.background = color;
+    if (cfg.color === color) d.classList.add('active');
+    d.onclick = () => {
+      Store.patch(dd => { dd.ui.widgets[name] = { ...dd.ui.widgets[name], color }; });
+      closeCtx(); buildDashboard();
+    };
+    row.appendChild(d);
+  }
+  const auto = el('span', 'ctx-dot ctx-dot-auto');
+  auto.title = 'как у всех';
+  if (!cfg.color) auto.classList.add('active');
+  auto.onclick = () => {
+    Store.patch(dd => { dd.ui.widgets[name] = { ...dd.ui.widgets[name], color: null }; });
+    closeCtx(); buildDashboard();
+  };
+  row.appendChild(auto);
+  m.appendChild(row);
+
+  const item = (label, fn) => {
+    const it = el('div', 'ctx-item', label);
+    it.onclick = () => { closeCtx(); fn(); };
+    m.appendChild(it);
+  };
+  item(cfg.collapsed ? 'развернуть' : 'свернуть', () => toggleCollapse(name));
+  item('сбросить размер', () => {
+    Store.patch(d => { d.ui.widgets[name] = { ...d.ui.widgets[name], spans: null, size: 'm' }; });
+    buildDashboard();
+  });
+  item('в архив', () => hideWidget(name));
+
+  document.body.appendChild(m);
+  const mw = m.offsetWidth, mh = m.offsetHeight;
+  m.style.left = Math.min(x, window.innerWidth - mw - 12) + 'px';
+  m.style.top = Math.min(y, window.innerHeight - mh - 12) + 'px';
+  setTimeout(() => document.addEventListener('pointerdown', closeCtx, { once: true }), 0);
+}
+
+function enableResize(w, name, grip) {
+  grip.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    grip.setPointerCapture(e.pointerId);
+    const s0 = widgetSpans(Store.data.ui.widgets[name]);
+    const cols = dashboardCols();
+    const dash = document.getElementById('dashboard');
+    const colW = (dash.clientWidth - 36 - (cols - 1) * GAP) / cols;
+    const x0 = e.clientX, y0 = e.clientY;
+    const h0 = s0.h, w0 = Math.min(s0.w || 1, cols);
+    w.classList.add('resizing');
+
+    const move = (ev) => {
+      const h = Math.max(3, h0 + Math.round((ev.clientY - y0) / (ROW_H + GAP)));
+      const wd = Math.max(1, Math.min(w0 + Math.round((ev.clientX - x0) / (colW + GAP)), cols));
+      w.style.gridRow = 'span ' + h;
+      w.style.gridColumn = 'span ' + wd;
+      w.dataset.spanH = h; w.dataset.spanW = wd;
+    };
+    const up = () => {
+      grip.removeEventListener('pointermove', move);
+      grip.removeEventListener('pointerup', up);
+      w.classList.remove('resizing');
+      const h = +(w.dataset.spanH || h0), wd = +(w.dataset.spanW || w0);
+      Store.patch(d => {
+        d.ui.widgets[name] = {
+          ...d.ui.widgets[name],
+          spans: { h, w: wd },
+          size: h <= 5 ? 's' : h >= 14 ? 'l' : 'm'
+        };
+      });
+      delete w.dataset.spanH; delete w.dataset.spanW;
+    };
+    grip.addEventListener('pointermove', move);
+    grip.addEventListener('pointerup', up);
+  });
+}
+
 function buildDashboard() {
   const dash = document.getElementById('dashboard');
   dash.innerHTML = '';
@@ -105,8 +243,14 @@ function buildDashboard() {
     const def = Widgets[name];
     if (!def) continue;
     const cfg = defs[name];
-    const w = el('div', 'widget size-' + (cfg.size || 'm'));
+    const spans = widgetSpans(cfg);
+    const collapsed = !!cfg.collapsed;
+
+    const w = el('div', 'widget' + (collapsed ? ' collapsed' : ''));
     w.dataset.widget = name;
+    w.style.gridRow = 'span ' + (collapsed ? 2 : spans.h);
+    w.style.gridColumn = 'span ' + Math.max(1, Math.min(spans.w || 1, dashboardCols()));
+    if (cfg.color) w.style.setProperty('--card-accent', cfg.color);
 
     const head = el('div', 'widget-head');
     head.setAttribute('draggable', 'true');
@@ -117,70 +261,87 @@ function buildDashboard() {
       b.textContent = txt; b.title = title; b.onclick = fn;
       return b;
     };
-    ctl.appendChild(mkBtn('–', 'уменьшить', () => cycleSize(name, -1)));
-    ctl.appendChild(mkBtn('+', 'увеличить', () => cycleSize(name, +1)));
-    ctl.appendChild(mkBtn('×', 'спрятать виджет', () => {
-      Store.patch(d => { d.ui.widgets[name] = { ...d.ui.widgets[name], on: false }; });
-      buildDashboard();
-      toast('виджет спрятан — вернуть можно в настройках ♡');
+    ctl.appendChild(mkBtn('♡', 'цвет карточки', (ev) => {
+      const r = ev.target.getBoundingClientRect();
+      widgetMenu(r.left - 60, r.bottom + 6, name);
     }));
+    ctl.appendChild(mkBtn('×', 'в архив (двойной клик по шапке — свернуть)', () => hideWidget(name)));
     head.appendChild(ctl);
+
+    head.addEventListener('dblclick', () => toggleCollapse(name));
+    head.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      widgetMenu(e.clientX, e.clientY, name);
+    });
     w.appendChild(head);
 
     const body = el('div', 'widget-body');
     w.appendChild(body);
-    dash.appendChild(w);
+    if (!collapsed) {
+      try { def.render(body, CTX); }
+      catch (e) { body.innerHTML = '<div class="anki-status">виджет покашлял: ' + esc(String(e)) + '</div>'; }
+    }
 
-    try { def.render(body, CTX); }
-    catch (e) { body.innerHTML = '<div class="anki-status">виджет покашлял: ' + esc(String(e)) + '</div>'; }
+    const grip = el('div', 'resize-grip');
+    grip.title = 'тяни — размер какой хочешь';
+    enableResize(w, name, grip);
+    w.appendChild(grip);
+
+    dash.appendChild(w);
   }
   enableDrag();
+  applyGridCols();
 }
 
-function cycleSize(name, dir) {
-  const order = ['s', 'm', 'l'];
-  const cfg = Store.data.ui.widgets[name];
-  const i = order.indexOf(cfg.size || 'm');
-  const next = order[Math.min(order.length - 1, Math.max(0, i + dir))];
-  Store.patch(d => { d.ui.widgets[name] = { ...d.ui.widgets[name], size: next }; });
-  buildDashboard();
-}
+/* ---------- полка «+» ---------- */
+function openShelf() {
+  const defs = Store.data.ui.widgets;
+  const box = el('div', 'shelf');
+  box.innerHTML = '<h2>полка виджетов ♡</h2>';
 
-function enableDrag() {
-  const dash = document.getElementById('dashboard');
-  let dragName = null;
-  dash.addEventListener('dragstart', (e) => {
-    const head = e.target.closest ? e.target.closest('.widget-head') : null;
-    if (!head) return;
-    const w = head.closest('.widget');
-    dragName = w.dataset.widget;
-    w.classList.add('dragging');
-    e.dataTransfer.setData('text/plain', dragName);
-  });
-  dash.addEventListener('dragend', () => {
-    document.querySelectorAll('.widget.dragging,.widget.drop-target')
-      .forEach(x => x.classList.remove('dragging', 'drop-target'));
-  });
-  dash.addEventListener('dragover', (e) => {
-    const w = e.target.closest ? e.target.closest('.widget') : null;
-    e.preventDefault();
-    document.querySelectorAll('.widget.drop-target').forEach(x => x.classList.remove('drop-target'));
-    if (w && w.dataset.widget !== dragName) w.classList.add('drop-target');
-  });
-  dash.addEventListener('drop', (e) => {
-    const target = e.target.closest ? e.target.closest('.widget') : null;
-    if (!target || !dragName || target.dataset.widget === dragName) return;
-    e.preventDefault();
-    const cfg = Store.data.ui.widgets;
-    const from = cfg[dragName].order;
-    const to = cfg[target.dataset.widget].order;
-    for (const n of Object.keys(cfg)) {
-      if (cfg[n].order === to) cfg[n].order = from;
-      else if (cfg[n].order === from) cfg[n].order = to;
+  const mkSection = (title, present, addLabel) => {
+    const sec = el('div', 'shelf-sec');
+    sec.innerHTML = '<div class="shelf-sec-title">' + title + '</div>';
+    const grid = el('div', 'shelf-grid');
+    let any = false;
+    for (const [name, def] of Object.entries(Widgets)) {
+      const on = defs[name] && defs[name].on !== false;
+      if (present !== on) continue;
+      any = true;
+      const meta = WIDGET_META[name] || { icon: '✧', desc: '' };
+      const card = el('div', 'shelf-card');
+      card.innerHTML =
+        '<div class="shelf-icon">' + meta.icon + '</div>' +
+        '<div class="shelf-name">' + esc(def.title) + '</div>' +
+        '<div class="shelf-desc">' + esc(meta.desc) + '</div>';
+      const b = el('button', 'btn outline mini', present ? 'на столе ✓' : addLabel);
+      if (present) {
+        b.disabled = true;
+        card.appendChild(b);
+        const off = el('button', 'btn outline mini', 'в архив');
+        off.onclick = () => { hideWidget(name); openShelf(); };
+        card.appendChild(off);
+      } else {
+        b.onclick = () => {
+          Store.patch(d => {
+            if (!d.ui.widgets[name]) d.ui.widgets[name] = { on: true, size: 'm', order: Object.keys(d.ui.widgets).length };
+            else d.ui.widgets[name] = { ...d.ui.widgets[name], on: true };
+          });
+          buildDashboard();
+          openShelf();
+        };
+        card.appendChild(b);
+      }
+      grid.appendChild(card);
     }
-    Store.patch(() => {});
-    buildDashboard();
-  });
+    if (!any) sec.insertAdjacentHTML('beforeend', '<div class="muted shelf-empty">пусто — всё на столе ♡</div>');
+    sec.appendChild(grid);
+    box.appendChild(sec);
+  };
+
+  mkSection('на столе', true);
+  mkSection('архив', false, 'вернуть на стол');
+  openModal(box);
 }
 
 function renderWidget(name) {
@@ -210,9 +371,7 @@ function openSettings() {
 
     <div class="row" style="margin-bottom:14px">
       <span style="font-size:13px;color:var(--muted)">тема:</span>
-      <span class="theme-dot theme-coquette ${ui.theme === 'theme-coquette' ? 'active' : ''}" data-th="theme-coquette"></span>
-      <span class="theme-dot theme-neutral ${ui.theme === 'theme-neutral' ? 'active' : ''}" data-th="theme-neutral"></span>
-      <span class="theme-dot theme-darkpink ${ui.theme === 'theme-darkpink' ? 'active' : ''}" data-th="theme-darkpink"></span>
+<span id="s-palettes" class="row" style="gap:6px"></span>
       <input type="color" id="s-accent" value="${esc(ui.accent || '#e56995')}" title="свой акцент" style="width:40px;padding:2px">
       <button class="btn outline mini" id="s-bg">фон-картинка</button>
       <button class="btn outline mini" id="s-bg-off">убрать фон</button>
@@ -280,13 +439,29 @@ function openSettings() {
     wg.appendChild(lab);
   }
 
-  box.querySelectorAll('.theme-dot').forEach(dot => {
+  const THEMES = [
+    ['theme-coquette', '#f9cfdd', 'coquette'],
+    ['theme-neutral', '#ecd9c3', 'беж'],
+    ['theme-butter', '#f6e3b4', 'баттер'],
+    ['theme-peach', '#f6c4b0', 'персик'],
+    ['theme-lavender', '#d9cdee', 'лаванда'],
+    ['theme-mint', '#c2e3cf', 'мята'],
+    ['theme-darkpink', '#3a2440', 'ночь'],
+    ['theme-egirl', '#241a28', 'e-girl']
+  ];
+  const pal = box.querySelector('#s-palettes');
+  for (const [th, col, label] of THEMES) {
+    const dot = document.createElement('span');
+    dot.className = 'theme-dot ' + th + (ui.theme === th ? ' active' : '');
+    dot.title = label; dot.dataset.th = th; dot.style.background = col;
     dot.onclick = () => {
-      box.querySelectorAll('.theme-dot').forEach(d => d.classList.remove('active'));
+      pal.querySelectorAll('.theme-dot').forEach(d => d.classList.remove('active'));
       dot.classList.add('active');
-      document.body.className = dot.dataset.th;
+      Store.patch(d => { d.ui.theme = th; });
+      applyUi();
     };
-  });
+    pal.appendChild(dot);
+  }
   box.querySelector('#s-bg').onclick = async () => {
     const f = await window.sp.pickImage();
     if (f) Store.patch(d => { d.ui.bgFile = f; });
@@ -390,6 +565,9 @@ async function boot() {
   };
 
   document.getElementById('btn-settings').onclick = openSettings;
+  document.getElementById('btn-shelf').onclick = openShelf;
+  document.getElementById('btn-walls').onclick = Walls.open;
+  window.addEventListener('resize', applyGridCols);
 
   const topClock = document.getElementById('topbar-clock');
   const tickTop = () => {

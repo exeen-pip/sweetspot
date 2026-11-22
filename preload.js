@@ -19,6 +19,10 @@ contextBridge.exposeInMainWorld('sp', {
     state: () => ipcRenderer.invoke('focus:state'),
     onViolation: (cb) => ipcRenderer.on('focus:violation', (e, data) => cb(data))
   },
+  walls: {
+    search: (q) => ipcRenderer.invoke('walls:search', { q }),
+    save: (item) => ipcRenderer.invoke('walls:save', { item })
+  },
   lanInfo: () => ipcRenderer.invoke('lan:info'),
   lanRestart: () => ipcRenderer.invoke('lan:restart'),
   ytdlp: {
