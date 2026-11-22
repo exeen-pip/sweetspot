@@ -15,9 +15,20 @@ if errorlevel 1 (
 if not exist node_modules (
   echo First run: installing engine, 2-3 minutes... do not close this window.
   call npm install > install-log.txt 2>&1
-  if errorlevel 1 (
+)
+
+rem --- auto-heal: electron binary sometimes does not download ---
+if exist node_modules\electron\index.js if not exist node_modules\electron\dist\electron.exe (
+  echo Healing Electron binary... 1-2 minutes
+  call node node_modules\electron\install.js >> install-log.txt 2>&1
+  if not exist node_modules\electron\dist\electron.exe (
+    echo Trying mirror...
+    set ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/
+    call node node_modules\electron\install.js >> install-log.txt 2>&1
+  )
+  if not exist node_modules\electron\dist\electron.exe (
     echo.
-    echo npm install failed - send me the file install-log.txt
+    echo Could not heal Electron - send me the file install-log.txt
     pause
     exit /b 1
   )
